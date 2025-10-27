@@ -1,0 +1,54 @@
+[
+  {
+    "ContainingType": "servicebusapi2.Controllers.MessageController",
+    "Method": "PrintAllLogs",
+    "RelativePath": "Message/print",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "servicebusapi2.Controllers.MessageController",
+    "Method": "PublishSingleMessage",
+    "RelativePath": "Message/publish",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "details",
+        "Type": "servicebusapi2.Models.Details",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "servicebusapi2.Controllers.MessageController",
+    "Method": "Schedule",
+    "RelativePath": "Message/schedule",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "servicebusapi2.Controllers.MessageController\u002BScheduleRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "servicebusapi2.Controllers.MessageController",
+    "Method": "StopSchedule",
+    "RelativePath": "Message/stop",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  }
+]

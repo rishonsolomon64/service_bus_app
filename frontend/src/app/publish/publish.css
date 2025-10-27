@@ -1,0 +1,45 @@
+.form-body {
+  display: flex;      
+  flex-direction: column; 
+  gap: 1.5rem;        
+  align-items: center;  
+}
+.form-group {
+  /* Use flexbox to align the label and input side-by-side */
+  display: flex;
+  align-items: center;
+  /* Use a consistent space between elements, not 'space-between' */
+  gap: 15px;
+}
+
+.form-group label {
+  /* Set a fixed width for all labels to ensure inputs align */
+  width: 250px;
+  /* Align the text to the right for a clean look */
+  text-align: right;
+  /* Remove the padding that was pushing the input */
+  padding-right: 0;
+}
+.form-header {
+  display: flex;     
+  flex-direction: column; 
+  gap: 1.5rem;      
+  align-items: center;   
+}
+.button-container {
+  display: flex;      
+  flex-direction: column;
+  gap: 1.5rem;         
+  align-items: center;  
+}
+.form-frame {
+  width: 100%;
+  max-width: 750px;
+  position: relative;
+  margin: 0 auto;
+  padding: 25px;
+  border-radius: 20px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  align-items: center;
+}
+

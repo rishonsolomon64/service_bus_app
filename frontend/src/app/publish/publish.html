@@ -1,0 +1,177 @@
+<div class="wrapper">
+    <input type="radio" id="publish-tab" name="card-tab" class="tab-radio" checked>
+    <input type="radio" id="schedule-tab" name="card-tab" class="tab-radio">
+    
+    <div class="tab-switcher-container">
+        <label for="publish-tab" class="tab-label">Publish Message</label>
+        <label for="schedule-tab" class="tab-label">Schedule Message</label>
+        <div class="tab-slider"></div>
+    </div>
+    
+    <div class="flip-card">
+        <div class="flip-card-front">
+            <div class="card">
+                <h2 class="card__title">Publish Message</h2>
+                <div class="card__form">
+                    <div class="form-group">
+                        <label for="typeDropdown">Type:</label>
+                        <select id="typeDropdown" class="form-control animated-input" [(ngModel)]="type" name="type">
+                            <option value="" disabled selected>Select a type</option>
+                            <option value="REFRESH">REFRESH</option>
+                            <option value="CREATE">CREATE</option>
+                        </select>
+                    </div>
+                    <fieldset class="form-fieldset">
+                        <legend>vmsIntegration</legend>
+                        <div class="form-group">
+                            <label for="idInput">id:</label>
+                            <input id="idInput" class="form-control animated-input" type="text" placeholder="Enter id" [(ngModel)]="id" name="id"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="customerIdInput">customerId:</label>
+                            <input id="customerIdInput" class="form-control animated-input" type="text" placeholder="Enter customerId" [(ngModel)]="customerId" name="customerId"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="videoIntegrationType">videoIntegrationType:</label>
+                            <input id="videoIntegrationType" class="form-control animated-input" type="text" placeholder="Enter videoIntegrationType" [(ngModel)]="videoIntegrationType" name="videoIntegrationType"/>
+                        </div>
+                    </fieldset>
+                    <div class="form-group">
+                        <label for="sequenceNumber">sequenceNumber:</label>
+                        <input id="sequenceNumber" class="form-control animated-input" type="text" placeholder="Enter sequenceNumber" [(ngModel)]="sequenceNumber" name="sequenceNumber"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="deviceIds">deviceIds:</label>
+                        <input id="deviceIds" class="form-control animated-input" type="text" placeholder="Enter deviceIds" [(ngModel)]="deviceIds" name="deviceIds"/>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-toolbar social-toolbar" role="toolbar" aria-label="Form actions">
+                <div class="toolbar-left">
+                    <button class="toolbar-btn secondary-btn" (click)="clearInputs()" title="Clear fields">
+                        <img src="/assets/icons/bin.svg" alt="icon" width="25" height="25">
+                        <span>Clear</span>
+                    </button>
+
+                    <button class="toolbar-btn secondary-btn" (click)="fillWithDefaults()" title="Set to default">
+                        <img src="assets/icons/undo3.svg" alt="icon" width="25" height="25">
+                        <span>Default</span>
+                    </button>
+                </div>
+
+                <div class="toolbar-spacer" aria-hidden="true"></div>
+
+                <div class="toolbar-right">
+                    <button class="toolbar-btn secondary-btn" (click)="publishMessage()" title="Publish message">
+                        <img src="assets/icons/send.svg" alt="icon" width="25" height="25">
+                        <span>Publish</span>
+                    </button>
+
+                    <!-- New test button to call GET /print -->
+                    <button class="toolbar-btn secondary-btn" (click)="printTest()" title="Print (test)">
+                        <img src="assets/icons/print.svg" alt="icon" width="25" height="25">
+                        <span>Print</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="toastBox" class="ngx-toastr"></div>
+        </div>
+
+        <div class="flip-card-back">
+            <div class="card">
+                <h2 class="card__title">Schedule Message</h2>
+                <div class="card__form">
+                    <div class="form-group">
+                        <label for="typeDropdown">Type:</label>
+                        <select id="typeDropdown" class="form-control animated-input" [(ngModel)]="type" name="type">
+                            <option value="" disabled selected>Select a type</option>
+                            <option value="REFRESH">REFRESH</option>
+                            <option value="CREATE">CREATE</option>
+                        </select>
+                    </div>
+                    <fieldset class="form-fieldset">
+                        <legend>vmsIntegration</legend>
+                        <div class="form-group">
+                            <label for="idInput">id:</label>
+                            <input id="idInput" class="form-control animated-input" type="text" placeholder="Enter id" [(ngModel)]="id" name="id"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="customerIdInput">customerId:</label>
+                            <input id="customerIdInput" class="form-control animated-input" type="text" placeholder="Enter customerId" [(ngModel)]="customerId" name="customerId"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="videoIntegrationType">videoIntegrationType:</label>
+                            <input id="videoIntegrationType" class="form-control animated-input" type="text" placeholder="Enter videoIntegrationType" [(ngModel)]="videoIntegrationType" name="videoIntegrationType"/>
+                        </div>
+                    </fieldset>
+                    <div class="form-group">
+                        <label for="sequenceNumber">sequenceNumber:</label>
+                        <input id="sequenceNumber" class="form-control animated-input" type="text" placeholder="Enter sequenceNumber" [(ngModel)]="sequenceNumber" name="sequenceNumber"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="deviceIds">deviceIds:</label>
+                        <input id="deviceIds" class="form-control animated-input" type="text" placeholder="Enter deviceIds" [(ngModel)]="deviceIds" name="deviceIds"/>
+                    </div>
+                    <div class="form-group interval-group">
+                        <label for="intervalInput">Send every:</label>
+                        <div class="stepper-input-wrapper">
+                            <input id="intervalInput" class="form-control stepper-input" type="number" value="1" min="1" max="60"[(ngModel)]="interval" name="interval"/>
+                        </div>
+                        <span class="interval-unit">minutes</span>
+                    </div>
+                    <div class="form-group repeat-group">
+                        <label for="repeatCountInput">Repeat for:</label>
+                        <div class="stepper-input-wrapper">
+                            <input id="repeatCountInput" class="form-control stepper-input" type="number" value="1" min="1" [(ngModel)]="duration" name="duration"/>
+                        </div>
+                        <span class="interval-unit">hour(s)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-toolbar social-toolbar" role="toolbar" aria-label="Form actions">
+                <div class="toolbar-left">
+                    <button class="toolbar-btn secondary-btn" (click)="clearInputs()" title="Clear fields">
+                        <!-- use relative path (no leading slash) -->
+                        <img src="assets/icons/bin.svg" alt="icon" width="25" height="25">
+                        <span>Clear</span>
+                    </button>
+
+                    <button class="toolbar-btn secondary-btn" (click)="fillWithDefaults()" title="Set to default">
+                        <img src="assets/icons/undo3.svg" alt="icon" width="25" height="25">
+                        <span>Default</span>
+                    </button>
+                </div>
+
+                <div class="toolbar-spacer" aria-hidden="true"></div>
+
+                <div class="toolbar-right">
+                    <button class="toolbar-btn secondary-btn" (click)="scheduleMessage()" title="Send message">
+                        <!-- paper-plane / send icon -->
+                        <img src="assets/icons/send.svg" alt="icon" width="25" height="25">
+                        <span>Send</span>
+                    </button>
+
+                    <button class="toolbar-btn secondary-btn" (click)="stopScheduling()" title="Stop schedule">
+                        <!-- stop icon -->
+                        <img src="assets/icons/stop.svg" alt="icon" width="25" height="25">
+                        <span>Stop</span>
+                    </button>
+
+                    <!-- New test button to call GET /print (same as front) -->
+                    <button class="toolbar-btn secondary-btn" (click)="printTest()" title="Print (test)">
+                        <img src="assets/icons/print.svg" alt="icon" width="25" height="25">
+                        <span>Print</span>
+                    </button>
+                </div>
+
+                <!-- small invisible spacer under the schedule tab buttons -->
+                <div class="schedule-spacer" aria-hidden="true"></div>
+            </div>
+
+            <div id="toastBox" class="ngx-toastr"></div>
+        </div>
+    </div>
+</div>

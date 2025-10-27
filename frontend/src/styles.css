@@ -1,0 +1,421 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Open+Sans:wght@400&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #f9f9f9;
+    background-image: url(https://images.rawpixel.com/image_800/czNmcy1wcml2YXRlL3Jhd3BpeGVsX2ltYWdlcy93ZWJzaXRlX2NvbnRlbnQvbHIvam9iNTkzLTA1MGEta3V3NG5veWwuanBn.jpg);
+}
+
+.card {
+    background-color: #EDDCD9;
+    border: 2px solid #264143;
+    border-radius: 20px;
+    box-shadow: 3px 4px 0px 1px #E99F4C;
+    padding: 20px;
+    max-width: 600px; /* Increased max-width */
+    width: 100%;
+    text-align: center;
+}
+
+
+.card__title {
+    font-size: 32px;
+    font-weight: 800;
+    font-family: 'Inter';
+    color: #000;
+    text-transform: uppercase;
+    margin-bottom: 25px;
+    display: block;
+    position: relative;
+    overflow: hidden;
+}
+
+.card__title::after {
+    content: "";
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    height: 3px;
+    background-color: #264143;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s ease-in-out;
+}
+
+.card__form input {
+    padding: 10px;
+    border: 3px solid #000;
+    font-size: 16px;
+    font-family: 'Roboto';
+    transition: transform 0.3s;
+    width: 100%;
+}
+
+.card__form input:focus {
+    outline: none;
+    transform: scale(1.03);
+    background-color: #a284aa;
+    color: #ffffff;
+}
+.card__title:hover::after {
+    transform: scaleX(1);
+}
+
+.form-group {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+}
+
+.form-group label {
+    font-weight: 580;
+    width: 100px;
+    font-family:'Roboto';
+    color: #000000;
+    text-align: right;
+    }
+
+.form-control {
+    outline: none;
+    border: 2px solid #264143;
+    box-shadow: 3px 4px 0px 1px #E99F4C;
+    width: 100%;
+    padding: 12px 10px;
+    border-radius: 4px;
+    font-size: 15px;
+}
+
+
+.flip-card__btn:active, .button-confirm:active {
+    transform: translate(3px, 3px);
+}
+
+
+
+.flip-card__btn:hover {
+    background-color: #d1c2d1;
+}
+
+
+
+.flip-card__btn:hover span {
+    width: 20px;
+}
+
+.form-fieldset {
+    border: 2px solid #264143;
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    align-items: left;
+}
+
+.form-fieldset legend {
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    font-size: 1.2em;
+    color: #000;
+    background-color: #EDDCD9;
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.flip-card {
+    position: relative;
+    width: 600px; /* Increased width to match the card and tab-switcher */
+    height: 600px;
+    text-align: center;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+    border-radius: 15px;
+}
+
+
+.flip-card-front, .flip-card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    border-radius: inherit;
+    background-color: #f7f3e9;
+}
+
+.flip-card-back {
+    transform: rotateY(180deg);
+}
+
+/* Final Tab Switcher Styling */
+.tab-switcher-container {
+    display: flex;
+    position: relative; /* Added for manual positioning */
+    width: 400px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    padding: 5px;
+    left: 20px; /* Adjust this value to manually move it right */
+}
+
+.tab-radio {
+    display: none;
+}
+
+.tab-label {
+    flex-grow: 1;
+    text-align: center;
+    padding: 10px;
+    cursor: pointer;
+    z-index: 1;
+    font-weight: 600;
+    color: #4b5563;
+    transition: color 0.3s;
+    font-family: 'Inter', sans-serif;
+}
+
+.tab-slider {
+    position: absolute;
+    height: calc(100% - 10px);
+    width: calc(50% - 5px);
+    background-color: #c0b1c7;
+    border-radius: 5px;
+    transition: transform 0.3s ease-in-out;
+}
+
+#publish-tab:checked ~ .tab-switcher-container .tab-slider {
+    transform: translateX(0);
+}
+
+#schedule-tab:checked ~ .tab-switcher-container .tab-slider {
+    transform: translateX(100%);
+}
+
+#schedule-tab:checked ~ .flip-card {
+    transform: rotateY(180deg);
+}
+
+
+
+/* Styling for the interval input group container */
+.interval-group {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Space between label, stepper, and "minutes" */
+    margin-bottom: 20px;
+    margin-top: 20px;
+    margin-left: -85px;
+    margin-right: 20px;
+}
+
+
+#intervalInput,
+#repeatCountInput,
+.stepper-input-wrapper .form-control.stepper-input {
+  width: 65px;        /* desired fixed width */
+  box-sizing: border-box;
+  text-align: center;  /* center the number inside */
+}
+.repeat-group {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Space between label, stepper, and "minutes" */
+    margin-bottom: 20px;
+    margin-top: 20px;
+    margin-left: -85px;
+    margin-right: 20px;
+}
+
+.interval-unit {
+  margin-left: 25px;
+  font-family: 'Inter', sans-serif;
+}
+/*style="display: flex; justify-content: center; margin-top: 20px;" */
+.button-container {
+    display: flex;
+    gap: 10px;
+}
+.secondary-btn {
+  --main-focus: #2d8cf0;
+  --font-color: #323232;
+  --bg-color-sub: #ffffff;
+  --bg-color: #cfc0d1;
+  --main-color: #997d78;
+  position: relative;
+  width: 180px;
+  height: 50px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border: 2px solid var(--main-color);
+  box-shadow: 4px 4px var(--main-color);
+  background-color: var(--bg-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.secondary-btn, .secondary-btn__icon, .secondary-btn__text {
+  transition: all 0.05s;
+}
+
+.secondary-btn .secondary-btn__text {
+  transform: translateX(33px);
+  color: var(--font-color);
+  font-weight: 800;
+  font-size: 120px;
+}
+
+.secondary-btn .svg {
+  width: 20px;
+  fill: var(--main-color);
+}
+
+.secondary-btn:hover {
+  background: var(--bg-color);
+}
+
+.secondary-btn:hover .secondary-btn__text {
+  color: transparent;
+}
+
+.secondary-btn:hover .secondary-btn__icon {
+  width: 148px;
+  transform: translateX(0);
+}
+
+.secondary-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0px 0px var(--main-color);
+}
+
+:root {
+  --toolbar-duration: 260ms;          /* overall expand/collapse duration */
+  --toolbar-ease: cubic-bezier(.2,.9,.3,1);
+  --toolbar-label-duration: 220ms;   
+}
+.toolbar-btn {
+  display: inline-flex;
+  font-family: 'Inter', sans-serif ;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 56px;
+  padding: 10px 10px;
+  transition: width var(--toolbar-duration) var(--toolbar-ease),
+              margin var(--toolbar-duration) var(--toolbar-ease),
+              padding calc(var(--toolbar-duration) / 1.5) ease;
+  border-radius: 10px;
+}
+
+
+/* hidden label by default — use variable for label timing */
+.toolbar-btn span {
+  display: inline-block;
+  width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: width var(--toolbar-label-duration) ease,
+              opacity calc(var(--toolbar-label-duration) / 1.5) ease,
+              transform var(--toolbar-label-duration) ease;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* expand on hover only (removed :focus so click keeps it collapsed) */
+.toolbar-btn:hover {
+  width: 170px;
+  padding-left: 12px;
+  padding-right: 12px;
+  margin-left: 6px;
+  margin-right: 6px;
+}
+
+/* reveal text when hovered (removed focus) */
+.toolbar-btn:hover span {
+  width: auto;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* keep a visible but non-expanding focus style for keyboard users */
+.toolbar-btn:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.18);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.06);
+}
+
+/* do NOT override :active rules so click animation stays */
+.toolbar-btn:active {}
+
+/* Layout helpers for toolbar (keeps existing visuals) */
+.form-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+  padding-bottom: 6px;
+  margin-top: 0px;
+  background: transparent;
+  border-radius: 6px;
+  width: 100%;
+}
+
+/* Center toolbox buttons */
+.form-toolbar.social-toolbar {
+  justify-content: center; /* center all groups horizontally */
+  gap: 14px;
+}
+
+/* hide the spacer that pushes items apart */
+.toolbar-spacer {
+  display: none;
+}
+
+/* keep left/right groups centered and compact */
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+@media (max-width:520px) {
+  .form-toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar-right { justify-content: flex-end; }
+  .toolbar-btn { width: 100%; justify-content: center; }
+  .toolbar-btn span { opacity: 1; width: auto; transform: none; }
+  .form-toolbar.social-toolbar {
+    flex-direction: column;
+    align-items: center;
+  }
+  .toolbar-left, .toolbar-right {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+.flip-card-front .card {
+  min-height: 560px; 
+}
