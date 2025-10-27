@@ -1,0 +1,122 @@
+name: Build and Deploy to Azure VM
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  AZURE_VM_NAME: 'servicebustry'            # <-- EDIT THIS: Your VM name
+  AZURE_RESOURCE_GROUP: 'tries'  # <-- EDIT THIS: Your Resource Group name
+  BACKEND_PATH: 'backend'
+  FRONTEND_PATH: 'frontend'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # Build .NET Backend
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x' # Using .NET 8 LTS for stability
+
+    - name: Build .NET Backend
+      run: dotnet publish ${{ env.BACKEND_PATH }} -c Release --o ${{ env.BACKEND_PATH }}/publish
+
+    # Build Frontend
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Build Frontend
+      run: |
+        cd ${{ env.FRONTEND_PATH }}
+        npm install
+        npm run build
+
+    # Login to Azure
+    - name: Log in to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # Deploy Files
+    - name: Stop VM for file copy
+      run: az vm stop -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }}
+
+    - name: Copy Backend Files
+      run: az vm copy -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }} --source-path "${{ env.BACKEND_PATH }}/publish/*" --destination-path "/home/azureuser/backend"
+
+    - name: Copy Frontend Files
+      run: az vm copy -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }} --source-path "${{ env.FRONTEND_PATH }}/dist/*" --destination-path "/home/azureuser/frontend"
+
+    - name: Start VM after copy
+      run: az vm start -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }}
+
+    # Configure Server
+    - name: Run Setup Script on VM
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az vm run-command invoke \
+            -g ${{ env.AZURE_RESOURCE_GROUP }} \
+            -n ${{ env.AZURE_VM_NAME }} \
+            --command-id RunShellScript \
+            --scripts "
+              #!/bin/bash
+              # Install dependencies
+              sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx
+
+              # Move files to web root
+              sudo rm -rf /var/www/*
+              sudo mv /home/azureuser/backend /var/www/
+              sudo mv /home/azureuser/frontend /var/www/
+
+              # Create backend service file
+              echo '[Unit]
+              Description=Service Bus API Backend
+              [Service]
+              WorkingDirectory=/var/www/backend
+              ExecStart=/usr/bin/dotnet /var/www/backend/servicebusapi2.dll
+              Restart=always
+              User=www-data
+              Environment=ASPNETCORE_ENVIRONMENT=Production
+              Environment=\"SERVICEBUS_CONNECTION=${{ secrets.SERVICEBUS_CONNECTION }}\"
+              Environment=\"PUBLISH_TOPIC=${{ secrets.PUBLISH_TOPIC }}\"
+              Environment=\"SCHEDULE_TOPIC=${{ secrets.SCHEDULE_TOPIC }}\"
+              [Install]
+              WantedBy=multi-user.target' | sudo tee /etc/systemd/system/servicebusapi.service
+
+              # Create nginx config file
+              echo 'server {
+                  listen 80;
+                  server_name _;
+                  root /var/www/frontend;
+                  index index.html;
+                  location / {
+                      try_files \$uri \$uri/ /index.html;
+                  }
+                  location /api {
+                      proxy_pass http://localhost:5000;
+                      proxy_http_version 1.1;
+                      proxy_set_header Upgrade \$http_upgrade;
+                      proxy_set_header Connection keep-alive;
+                      proxy_set_header Host \$host;
+                      proxy_cache_bypass \$http_upgrade;
+                      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto \$scheme;
+                  }
+              }' | sudo tee /etc/nginx/sites-available/default
+
+              # Enable and restart services
+              sudo systemctl daemon-reload
+              sudo systemctl enable servicebusapi.service
+              sudo systemctl restart servicebusapi.service
+              sudo systemctl restart nginx
+            "
