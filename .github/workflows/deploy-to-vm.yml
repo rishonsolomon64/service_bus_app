@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_VM_NAME: 'servicebustry'  
-  AZURE_RESOURCE_GROUP: 'tries'  
+  AZURE_VM_NAME: 'servicebustry'
+  AZURE_RESOURCE_GROUP: 'tries'
   BACKEND_PATH: 'backend'
   FRONTEND_PATH: 'frontend'
 
@@ -23,10 +23,10 @@ jobs:
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '8.0.x' # Using .NET 8 LTS for stability
+        dotnet-version: '8.0.x'
 
     - name: Build .NET Backend
-      run: dotnet publish ${{ env.BACKEND_PATH }}/servicebusapi2.csproj -c Release --o ${{ env.BACKEND_PATH }}/publish
+      run: dotnet publish ${{ env.BACKEND_PATH }}/servicebusapi2.csproj -c Release --output ${{ env.BACKEND_PATH }}/publish
 
     # Build Frontend
     - name: Set up Node.js
