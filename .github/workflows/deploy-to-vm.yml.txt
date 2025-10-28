@@ -26,7 +26,7 @@ jobs:
         dotnet-version: '8.0.x' # Using .NET 8 LTS for stability
 
     - name: Build .NET Backend
-      run: dotnet publish ${{ env.BACKEND_PATH }} -c Release --o ${{ env.BACKEND_PATH }}/publish
+      run: dotnet publish ${{ env.BACKEND_PATH }}/servicebusapi2.csproj -c Release --o ${{ env.BACKEND_PATH }}/publish
 
     # Build Frontend
     - name: Set up Node.js
