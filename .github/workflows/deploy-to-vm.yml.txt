@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_VM_NAME: 'servicebustry'            # <-- EDIT THIS: Your VM name
-  AZURE_RESOURCE_GROUP: 'tries'  # <-- EDIT THIS: Your Resource Group name
+  AZURE_VM_NAME: 'servicebustry'  
+  AZURE_RESOURCE_GROUP: 'tries'  
   BACKEND_PATH: 'backend'
   FRONTEND_PATH: 'frontend'
 
