@@ -108,6 +108,7 @@ jobs:
               Environment=\"SERVICEBUS_CONNECTION=${{ secrets.SERVICEBUS_CONNECTION }}\"
               Environment=\"PUBLISH_TOPIC=${{ secrets.PUBLISH_TOPIC }}\"
               Environment=\"SCHEDULE_TOPIC=${{ secrets.SCHEDULE_TOPIC }}\"
+              Environment=\"AngularAppUrl=http://$(curl -s ifconfig.me)\"
               [Install]
               WantedBy=multi-user.target' | sudo tee /etc/systemd/system/servicebusapi.service
 
