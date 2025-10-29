@@ -25,17 +25,17 @@ builder.Services.AddControllers();
 builder.Services.AddSingleton<MessageIntervalService>();
 //----------------------------------------------------------------------
 
-// Service Bus configuration (edit with your values)
-const string ServiceBusConnection =
-    "Endpoint=sb://rishontryingplswork.servicebus.windows.net/;SharedAccessKeyName=try1app1;SharedAccessKey=ueUUphS6h9qNaN4tQP9CQVEO2fyEaovgn+ASbJ4/AG8=";
-
-const string PublishTopic = "servicetest";
-const string ScheduleTopic = "servicetest";
-
+// Service Bus configuration is now loaded from environment variables
+var serviceBusConnection = builder.Configuration["ServiceBusConnection"] 
+    ?? throw new InvalidOperationException("Service Bus Connection string not found in configuration.");
+var publishTopic = builder.Configuration["PublishTopic"] 
+    ?? throw new InvalidOperationException("PublishTopic not found in configuration.");
+var scheduleTopic = builder.Configuration["ScheduleTopic"] 
+    ?? throw new InvalidOperationException("ScheduleTopic not found in configuration.");
 //----------------------------------------------------------------------
 
 // Reusable singleton client
-builder.Services.AddSingleton(new ServiceBusClient(ServiceBusConnection));
+builder.Services.AddSingleton(new ServiceBusClient(serviceBusConnection));
 
 // PublishTask 
 builder.Services.AddScoped<PublishTask>(sp =>
@@ -43,8 +43,8 @@ builder.Services.AddScoped<PublishTask>(sp =>
     var logger = sp.GetRequiredService<ILogger<PublishTask>>();
     var logContext = sp.GetRequiredService<ServiceBusLogContext>();
     return new PublishTask(
-        ServiceBusConnection,
-        PublishTopic,
+        serviceBusConnection,
+        publishTopic,
         logger,
         logContext
     );
@@ -59,17 +59,18 @@ builder.Services.AddSingleton<ScheduleTask>(sp =>
     var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();  
     return new ScheduleTask(
         client,
-        ScheduleTopic, 
+        scheduleTopic, 
         logger,
         scopeFactory     
     );
 });
 
 // CORS
+var angularAppUrl = builder.Configuration["AngularAppUrl"] ?? "http://localhost:4200";
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngularApp",
-        policy => policy.WithOrigins("http://localhost:4200")
+        policy => policy.WithOrigins(angularAppUrl)
                         .AllowAnyHeader()
                         .AllowAnyMethod());
 });
@@ -94,9 +95,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // Commented out for now to simplify proxy configuration
 app.UseCors("AllowAngularApp");
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
-
