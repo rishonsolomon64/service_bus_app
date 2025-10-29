@@ -32,7 +32,7 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '20' # <-- THIS LINE HAS BEEN UPDATED
+        node-version: '20'
 
     - name: Build Frontend
       run: |
@@ -46,18 +46,12 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    # Deploy Files
-    - name: Stop VM for file copy
-      run: az vm stop -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }}
-
+    # Deploy Files (VM does NOT need to be stopped)
     - name: Copy Backend Files
       run: az vm copy -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }} --source-path "${{ env.BACKEND_PATH }}/publish/*" --destination-path "/home/azureuser/backend"
 
     - name: Copy Frontend Files
       run: az vm copy -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }} --source-path "${{ env.FRONTEND_PATH }}/dist/*" --destination-path "/home/azureuser/frontend"
-
-    - name: Start VM after copy
-      run: az vm start -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }}
 
     # Configure Server
     - name: Run Setup Script on VM
