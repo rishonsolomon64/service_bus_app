@@ -46,7 +46,11 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    # Deploy Files (VM does NOT need to be stopped)
+    # Install the vm-copy extension
+    - name: Install vm-copy extension
+      run: az extension add --name vm-copy
+
+    # Deploy Files
     - name: Copy Backend Files
       run: az vm copy -g ${{ env.AZURE_RESOURCE_GROUP }} -n ${{ env.AZURE_VM_NAME }} --source-path "${{ env.BACKEND_PATH }}/publish/*" --destination-path "/home/azureuser/backend"
 
