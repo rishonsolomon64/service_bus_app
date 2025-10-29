@@ -7,7 +7,7 @@ on:
 
 env:
   AZURE_VM_NAME: 'servicebustry'
-  AZURE_RESOURCE_GROUP: 'tries' #<-- I have updated this based on your log
+  AZURE_RESOURCE_GROUP: 'tries'
   BACKEND_PATH: 'backend'
   FRONTEND_PATH: 'frontend'
   BACKEND_ARTIFACT_NAME: 'backend-app'
@@ -40,13 +40,13 @@ jobs:
         npm run build
 
     - name: Upload Backend Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4 # <-- UPDATED
       with:
         name: ${{ env.BACKEND_ARTIFACT_NAME }}
         path: ${{ env.BACKEND_PATH }}/publish
 
     - name: Upload Frontend Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4 # <-- UPDATED
       with:
         name: ${{ env.FRONTEND_ARTIFACT_NAME }}
         path: ${{ env.FRONTEND_PATH }}/dist
@@ -76,7 +76,7 @@ jobs:
             --scripts "
               #!/bin/bash
               # Install dependencies
-              sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx unzip
+              sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx unzip jq
 
               # Download artifacts
               sudo wget -O /tmp/backend.zip \$${BACKEND_URL//\"/}
