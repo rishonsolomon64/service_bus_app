@@ -85,6 +85,9 @@ jobs:
               "ScheduleTopic=${{ secrets.SCHEDULE_TOPIC }}" \
             --scripts "
               #!/bin/bash
+              set -e # Exit immediately if a command exits with a non-zero status.
+              set -x # Print commands and their arguments as they are executed.
+
               # Install dependencies
               sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx unzip jq
 
@@ -100,59 +103,48 @@ jobs:
               sudo unzip -o /tmp/backend.zip -d /var/www/backend
               sudo unzip -o /tmp/frontend.zip -d /var/www/frontend
 
-              # --- START OF FIX ---
+              # --- START OF DEBUGGING ---
+              echo \"Listing files in /var/www/backend:\"
+              sudo ls -lR /var/www/backend
+              # --- END OF DEBUGGING ---
+
               # Find the main application DLL dynamically
-              DLL_NAME=\$(find /var/www/backend -type f -name '*.dll' ! -name 'Azure.*.dll' ! -name 'Microsoft.*.dll' -printf '%f\\n' | head -n 1)
+              DLL_NAME=\$(sudo find /var/www/backend -type f -name '*.dll' ! -name 'Azure.*.dll' ! -name 'Microsoft.*.dll' -printf '%f\\n' | head -n 1)
               if [ -z \"\$DLL_NAME\" ]; then
                 echo \"Error: Could not find the main application DLL in /var/www/backend\"
-                # Optional: List files for debugging
-                ls -lR /var/www/backend
                 exit 1
               fi
               echo \"Found application DLL: \$DLL_NAME\"
-              # --- END OF FIX ---
 
               # Create backend service file
-              echo \"[Unit]
-              Description=Service Bus API Backend
-              [Service]
-              WorkingDirectory=/var/www/backend
-              ExecStart=/usr/bin/dotnet /var/www/backend/\$DLL_NAME
-              Restart=always
-              User=www-data
-              Environment=ASPNETCORE_ENVIRONMENT=Production
-              Environment=\\\"SERVICEBUS_CONNECTION=$1\\\"
-              Environment=\\\"PUBLISH_TOPIC=$2\\\"
-              Environment=\\\"SCHEDULE_TOPIC=$3\\\"
-              Environment=\\\"AngularAppUrl=http://\$(curl -s ifconfig.me)\\\"
-              [Install]
-              WantedBy=multi-user.target\" | sudo tee /etc/systemd/system/servicebusapi.service
+              SERVICE_FILE_CONTENT=\$(cat <<EOF
+[Unit]
+Description=Service Bus API Backend
+[Service]
+WorkingDirectory=/var/www/backend
+ExecStart=/usr/bin/dotnet /var/www/backend/\$DLL_NAME
+Restart=always
+User=www-data
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=\"SERVICEBUS_CONNECTION=$1\"
+Environment=\"PUBLISH_TOPIC=$2\"
+Environment=\"SCHEDULE_TOPIC=$3\"
+Environment=\"AngularAppUrl=http://\$(curl -s ifconfig.me)\"
+[Install]
+WantedBy=multi-user.target
+EOF
+)
+              echo \"\$SERVICE_FILE_CONTENT\" | sudo tee /etc/systemd/system/servicebusapi.service
 
-              # Create nginx config file
-              echo 'server {
-                  listen 80;
-                  server_name _;
-                  root /var/www/frontend;
-                  index index.html;
-                  location / {
-                      try_files \\\$uri \\\$uri/ /index.html;
-                  }
-                  location /api {
-                      proxy_pass http://localhost:5000;
-                      proxy_http_version 1.1;
-                      proxy_set_header Upgrade \\\$http_upgrade;
-                      proxy_set_header Connection keep-alive;
-                      proxy_set_header Host \\\$host;
-                      proxy_cache_bypass \\\$http_upgrade;
-                      proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-                      proxy_set_header X-Forwarded-Proto \\\$scheme;
-                  }
-              }' | sudo tee /etc/nginx/sites-available/default
+              # --- START OF DEBUGGING ---
+              echo \"Verifying content of service file:\"
+              sudo cat /etc/systemd/system/servicebusapi.service
+              # --- END OF DEBUGGING ---
 
               # Set permissions and restart services
               sudo chown -R www-data:www-data /var/www
               sudo systemctl daemon-reload
               sudo systemctl enable servicebusapi.service
               sudo systemctl restart servicebusapi.service
-              sudo systemctl restart nginx
+              sudo systemctl status servicebusapi.service --no-pager
             "
