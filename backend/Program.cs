@@ -26,11 +26,11 @@ builder.Services.AddSingleton<MessageIntervalService>();
 //----------------------------------------------------------------------
 
 // Service Bus configuration is now loaded from environment variables
-var serviceBusConnection = builder.Configuration["ServiceBusConnection"] 
+var serviceBusConnection = builder.Configuration["ServiceBusConnection"]
     ?? throw new InvalidOperationException("Service Bus Connection string not found in configuration.");
-var publishTopic = builder.Configuration["PublishTopic"] 
+var publishTopic = builder.Configuration["PublishTopic"]
     ?? throw new InvalidOperationException("PublishTopic not found in configuration.");
-var scheduleTopic = builder.Configuration["ScheduleTopic"] 
+var scheduleTopic = builder.Configuration["ScheduleTopic"]
     ?? throw new InvalidOperationException("ScheduleTopic not found in configuration.");
 //----------------------------------------------------------------------
 
@@ -54,14 +54,14 @@ builder.Services.AddScoped<PublishTask>(sp =>
 // ScheduleTask 
 builder.Services.AddSingleton<ScheduleTask>(sp =>
 {
-    var client       = sp.GetRequiredService<ServiceBusClient>();
-    var logger       = sp.GetRequiredService<ILogger<ScheduleTask>>();
-    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();  
+    var client = sp.GetRequiredService<ServiceBusClient>();
+    var logger = sp.GetRequiredService<ILogger<ScheduleTask>>();
+    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
     return new ScheduleTask(
         client,
-        scheduleTopic, 
+        scheduleTopic,
         logger,
-        scopeFactory     
+        scopeFactory
     );
 });
 
@@ -95,8 +95,23 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Exception handling middleware to log errors
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An unhandled exception has occurred.");
+        throw; // Re-throw the exception
+    }
+});
+
 // app.UseHttpsRedirection(); // Commented out for now to simplify proxy configuration
 app.UseCors("AllowAngularApp");
 app.UseAuthorization();
 app.MapControllers();
-app.Run();
+app.Run();app.Run();
