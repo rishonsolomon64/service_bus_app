@@ -111,19 +111,19 @@ jobs:
 
               # Create backend service file
               echo \"[Unit]
-Description=Service Bus API Backend
-[Service]
-WorkingDirectory=/var/www/backend
-ExecStart=/usr/bin/dotnet /var/www/backend/\$DLL_NAME
-Restart=always
-User=www-data
-Environment=ASPNETCORE_ENVIRONMENT=Production
-Environment=\\\"SERVICEBUS_CONNECTION=$1\\\"
-Environment=\\\"PUBLISH_TOPIC=$2\\\"
-Environment=\\\"SCHEDULE_TOPIC=$3\\\"
-Environment=\\\"AngularAppUrl=http://\$(curl -s ifconfig.me)\\\"
-[Install]
-WantedBy=multi-user.target\" | sudo tee /etc/systemd/system/servicebusapi.service
+              Description=Service Bus API Backend
+              [Service]
+              WorkingDirectory=/var/www/backend
+              ExecStart=/usr/bin/dotnet /var/www/backend/\$DLL_NAME
+              Restart=always
+              User=www-data
+              Environment=ASPNETCORE_ENVIRONMENT=Production
+              Environment=\\\"SERVICEBUS_CONNECTION=$1\\\"
+              Environment=\\\"PUBLISH_TOPIC=$2\\\"
+              Environment=\\\"SCHEDULE_TOPIC=$3\\\"
+              Environment=\\\"AngularAppUrl=http://\$(curl -s ifconfig.me)\\\"
+              [Install]
+              WantedBy=multi-user.target\" | sudo tee /etc/systemd/system/servicebusapi.service
 
               # Create nginx config file
               echo 'server {
