@@ -114,4 +114,4 @@ app.Use(async (context, next) =>
 app.UseCors("AllowAngularApp");
 app.UseAuthorization();
 app.MapControllers();
-app.Run();app.Run();
+app.Run();
