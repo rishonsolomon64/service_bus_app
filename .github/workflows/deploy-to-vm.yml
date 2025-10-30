@@ -7,7 +7,7 @@ on:
 
 env:
   AZURE_VM_NAME: 'servicebustry'
-  AZURE_RESOURCE_GROUP: 'TRIES'
+  AZURE_RESOURCE_GROUP: 'tries'
   BACKEND_PATH: 'backend'
   FRONTEND_PATH: 'frontend'
   BACKEND_ARTIFACT_NAME: 'backend-app'
@@ -100,12 +100,24 @@ jobs:
               sudo unzip -o /tmp/backend.zip -d /var/www/backend
               sudo unzip -o /tmp/frontend.zip -d /var/www/frontend
 
+              # --- START OF FIX ---
+              # Find the main application DLL dynamically
+              DLL_NAME=\$(find /var/www/backend -type f -name '*.dll' ! -name 'Azure.*.dll' ! -name 'Microsoft.*.dll' -printf '%f\\n' | head -n 1)
+              if [ -z \"\$DLL_NAME\" ]; then
+                echo \"Error: Could not find the main application DLL in /var/www/backend\"
+                # Optional: List files for debugging
+                ls -lR /var/www/backend
+                exit 1
+              fi
+              echo \"Found application DLL: \$DLL_NAME\"
+              # --- END OF FIX ---
+
               # Create backend service file
               echo \"[Unit]
               Description=Service Bus API Backend
               [Service]
               WorkingDirectory=/var/www/backend
-              ExecStart=/usr/bin/dotnet /var/www/backend/servicebusapi2.dll
+              ExecStart=/usr/bin/dotnet /var/www/backend/\$DLL_NAME
               Restart=always
               User=www-data
               Environment=ASPNETCORE_ENVIRONMENT=Production
