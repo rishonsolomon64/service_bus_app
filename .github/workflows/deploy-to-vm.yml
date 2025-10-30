@@ -7,7 +7,7 @@ on:
 
 env:
   AZURE_VM_NAME: 'servicebustry'
-  AZURE_RESOURCE_GROUP: 'tries'
+  AZURE_RESOURCE_GROUP: 'TRIES'
   BACKEND_PATH: 'backend'
   FRONTEND_PATH: 'frontend'
   BACKEND_ARTIFACT_NAME: 'backend-app'
@@ -144,9 +144,3 @@ jobs:
               sudo systemctl restart servicebusapi.service
               sudo systemctl restart nginx
             "
-    - name: Deallocate VM
-      if: always() # This ensures the VM is deallocated even if the script fails
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          az vm deallocate --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_VM_NAME }} --no-wait
