@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\FGJ843\\Desktop\\servicebusapi2\\servicebusapi2.csproj": {}
+    "C:\\Users\\FGJ843\\Desktop\\servicebus-fullstack-app\\backend\\servicebusapi2.csproj": {}
   },
   "projects": {
-    "C:\\Users\\FGJ843\\Desktop\\servicebusapi2\\servicebusapi2.csproj": {
+    "C:\\Users\\FGJ843\\Desktop\\servicebus-fullstack-app\\backend\\servicebusapi2.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\FGJ843\\Desktop\\servicebusapi2\\servicebusapi2.csproj",
+        "projectUniqueName": "C:\\Users\\FGJ843\\Desktop\\servicebus-fullstack-app\\backend\\servicebusapi2.csproj",
         "projectName": "servicebusapi2",
-        "projectPath": "C:\\Users\\FGJ843\\Desktop\\servicebusapi2\\servicebusapi2.csproj",
+        "projectPath": "C:\\Users\\FGJ843\\Desktop\\servicebus-fullstack-app\\backend\\servicebusapi2.csproj",
         "packagesPath": "C:\\Users\\FGJ843\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\FGJ843\\Desktop\\servicebusapi2\\obj\\",
+        "outputPath": "C:\\Users\\FGJ843\\Desktop\\servicebus-fullstack-app\\backend\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
