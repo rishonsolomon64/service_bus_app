@@ -66,90 +66,119 @@ jobs:
         inlineScript: |
           az vm start --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_VM_NAME }}
 
+    - name: Get backend artifact URL
+      id: backend_artifact
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.runId,
+          });
+          const backendArtifact = artifacts.data.artifacts.find(artifact => artifact.name === '${{ env.BACKEND_ARTIFACT_NAME }}');
+          return backendArtifact.archive_download_url;
+
+    - name: Get frontend artifact URL
+      id: frontend_artifact
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.runId,
+          });
+          const frontendArtifact = artifacts.data.artifacts.find(artifact => artifact.name === '${{ env.FRONTEND_ARTIFACT_NAME }}');
+          return frontendArtifact.archive_download_url;
+
     - name: Run Setup Script on VM
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          # Get the download URLs for the artifacts
-          BACKEND_URL=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" | jq '.artifacts[] | select(.name == "${{ env.BACKEND_ARTIFACT_NAME }}") | .archive_download_url')
-          FRONTEND_URL=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" | jq '.artifacts[] | select(.name == "${{ env.FRONTEND_ARTIFACT_NAME }}") | .archive_download_url')
+          # Create a temporary script file on the runner
+          cat << 'EOF' > deploy_script.sh
+          #!/bin/bash
+          set -e # Exit immediately if a command exits with a non-zero status.
 
-          # Run the deployment script on the VM
+          # Parameters from workflow:
+          BACKEND_URL="$1"
+          FRONTEND_URL="$2"
+          GITHUB_TOKEN="$3"
+          SB_CONN="$4"
+          PUB_TOPIC="$5"
+          SCHED_TOPIC="$6"
+
+          # Install dependencies
+          sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx unzip
+
+          # Download artifacts using the token
+          sudo wget --header="Authorization: Bearer $GITHUB_TOKEN" -O /tmp/backend.zip "$BACKEND_URL"
+          sudo wget --header="Authorization: Bearer $GITHUB_TOKEN" -O /tmp/frontend.zip "$FRONTEND_URL"
+
+          # Prepare directories
+          sudo rm -rf /var/www/*
+          sudo mkdir -p /var/www/backend /var/www/frontend
+
+          # Unzip artifacts
+          sudo unzip -o /tmp/backend.zip -d /var/www/backend
+          sudo unzip -o /tmp/frontend.zip -d /var/www/frontend
+
+          # Find the main application DLL dynamically
+          DLL_NAME=$(sudo find /var/www/backend -type f -name '*.dll' ! -name 'Azure.*.dll' ! -name 'Microsoft.*.dll' -printf '%f\n' | head -n 1)
+          if [ -z "$DLL_NAME" ]; then
+            echo "Error: Could not find the main application DLL"
+            exit 1
+          fi
+
+          # Create backend service file
+          echo "[Unit]
+Description=Service Bus API Backend
+[Service]
+WorkingDirectory=/var/www/backend
+ExecStart=/usr/bin/dotnet /var/www/backend/$DLL_NAME
+Restart=always
+User=www-data
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment="SERVICEBUS_CONNECTION=$SB_CONN"
+Environment="PUBLISH_TOPIC=$PUB_TOPIC"
+Environment="SCHEDULE_TOPIC=$SCHED_TOPIC"
+Environment="AngularAppUrl=http://$(curl -s ifconfig.me)"
+[Install]
+WantedBy=multi-user.target" | sudo tee /etc/systemd/system/servicebusapi.service
+
+          # Create nginx config file
+          echo 'server {
+              listen 80;
+              server_name _;
+              root /var/www/frontend;
+              index index.html;
+              location / {
+                  try_files \$uri \$uri/ /index.html;
+              }
+              location /api {
+                  proxy_pass http://localhost:5000;
+              }
+          }' | sudo tee /etc/nginx/sites-available/default
+
+          # Set permissions and restart services
+          sudo chown -R www-data:www-data /var/www
+          sudo systemctl daemon-reload
+          sudo systemctl enable servicebusapi.service
+          sudo systemctl restart servicebusapi.service
+          sudo systemctl restart nginx
+          EOF
+
+          # Execute the script on the VM, passing the file path
           az vm run-command invoke \
             -g ${{ env.AZURE_RESOURCE_GROUP }} \
             -n ${{ env.AZURE_VM_NAME }} \
             --command-id RunShellScript \
             --parameters \
+              "BackendUrl=${{ steps.backend_artifact.outputs.result }}" \
+              "FrontendUrl=${{ steps.frontend_artifact.outputs.result }}" \
+              "GitHubToken=${{ secrets.GITHUB_TOKEN }}" \
               "ServiceBusConnection=${{ secrets.SERVICEBUS_CONNECTION }}" \
               "PublishTopic=${{ secrets.PUBLISH_TOPIC }}" \
               "ScheduleTopic=${{ secrets.SCHEDULE_TOPIC }}" \
-            --scripts "
-              #!/bin/bash
-              set -e # Exit immediately if a command exits with a non-zero status.
-
-              # Install dependencies
-              sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx unzip jq
-
-              # Download artifacts
-              sudo wget -O /tmp/backend.zip \$${BACKEND_URL//\"/}
-              sudo wget -O /tmp/frontend.zip \$${FRONTEND_URL//\"/}
-
-              # Prepare directories
-              sudo rm -rf /var/www/*
-              sudo mkdir -p /var/www/backend /var/www/frontend
-
-              # Unzip artifacts
-              sudo unzip -o /tmp/backend.zip -d /var/www/backend
-              sudo unzip -o /tmp/frontend.zip -d /var/www/frontend
-
-              # Find the main application DLL dynamically
-              DLL_NAME=\$(sudo find /var/www/backend -type f -name '*.dll' ! -name 'Azure.*.dll' ! -name 'Microsoft.*.dll' -printf '%f\\n' | head -n 1)
-              if [ -z \"\$DLL_NAME\" ]; then
-                echo \"Error: Could not find the main application DLL in /var/www/backend\"
-                exit 1
-              fi
-
-              # Create backend service file
-              echo \"[Unit]
-              Description=Service Bus API Backend
-              [Service]
-              WorkingDirectory=/var/www/backend
-              ExecStart=/usr/bin/dotnet /var/www/backend/\$DLL_NAME
-              Restart=always
-              User=www-data
-              Environment=ASPNETCORE_ENVIRONMENT=Production
-              Environment=\\\"SERVICEBUS_CONNECTION=$1\\\"
-              Environment=\\\"PUBLISH_TOPIC=$2\\\"
-              Environment=\\\"SCHEDULE_TOPIC=$3\\\"
-              Environment=\\\"AngularAppUrl=http://\$(curl -s ifconfig.me)\\\"
-              [Install]
-              WantedBy=multi-user.target\" | sudo tee /etc/systemd/system/servicebusapi.service
-
-              # Create nginx config file
-              echo 'server {
-                  listen 80;
-                  server_name _;
-                  root /var/www/frontend;
-                  index index.html;
-                  location / {
-                      try_files \\\$uri \\\$uri/ /index.html;
-                  }
-                  location /api {
-                      proxy_pass http://localhost:5000;
-                      proxy_http_version 1.1;
-                      proxy_set_header Upgrade \\\$http_upgrade;
-                      proxy_set_header Connection keep-alive;
-                      proxy_set_header Host \\\$host;
-                      proxy_cache_bypass \\\$http_upgrade;
-                      proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-                      proxy_set_header X-Forwarded-Proto \\\$scheme;
-                  }
-              }' | sudo tee /etc/nginx/sites-available/default
-
-              # Set permissions and restart services
-              sudo chown -R www-data:www-data /var/www
-              sudo systemctl daemon-reload
-              sudo systemctl enable servicebusapi.service
-              sudo systemctl restart servicebusapi.service
-              sudo systemctl restart nginx
-            "
+            --scripts @deploy_script.sh
