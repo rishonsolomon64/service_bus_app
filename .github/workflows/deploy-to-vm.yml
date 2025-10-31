@@ -1,82 +1,250 @@
-- name: Run Setup Script on VM
-        uses: azure/CLI@v1
+# Corrected deployment workflow (SSH-based deploy).
+# Notes:
+# - This workflow downloads build artifacts (expected names: "backend" and "frontend") using actions/download-artifact,
+#   copies them to the VM over SSH, and runs a robust idempotent deploy script on the VM.
+# - It fixes the 500 internal error causes you reported:
+#   * the systemd unit no longer hardcodes a DLL name; a small wrapper finds the .dll at runtime.
+#   * nginx root points to /var/www/frontend (unzip places files there).
+# - Secrets required in repository secrets:
+#   VM_HOST            (VM public IP or DNS)
+#   VM_USER            (SSH user, e.g. ubuntu)
+#   VM_SSH_PRIVATE_KEY (private key with access to VM)
+#   SERVICEBUS_CONNECTION
+#   PUBLISH_TOPIC
+#   SCHEDULE_TOPIC
+#
+# If you prefer the azure CLI (az vm run-command) approach instead of SSH, tell me and I will provide that variant.
+#
+name: Deploy to VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
         with:
-          inlineScript: |
-            # Get the download URLs for the artifacts
-            BACKEND_URL=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" | jq '.artifacts[] | select(.name == "${{ env.BACKEND_ARTIFACT_NAME }}") | .archive_download_url')
-            FRONTEND_URL=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" | jq '.artifacts[] | select(.name == "${{ env.FRONTEND_ARTIFACT_NAME }}") | .archive_download_url')
-            # Run the deployment script on the VM
-            az vm run-command invoke \
-              -g ${{ env.AZURE_RESOURCE_GROUP }} \
-              -n ${{ env.AZURE_VM_NAME }} \
-              --command-id RunShellScript \
-              --parameters \
-                "ServiceBusConnection=${{ secrets.SERVICEBUS_CONNECTION }}" \
-                "PublishTopic=${{ secrets.PUBLISH_TOPIC }}" \
-                "ScheduleTopic=${{ secrets.SCHEDULE_TOPIC }}" \
-              --scripts "
-                #!/bin/bash
-                set -e # Exit immediately if a command exits with a non-zero status.
-                # Install dependencies
-                sudo apt-get update && sudo apt-get install -y dotnet-runtime-8.0 nginx unzip jq
-                # Download artifacts
-                sudo wget -O /tmp/backend.zip \$${BACKEND_URL//\"/}
-                sudo wget -O /tmp/frontend.zip \$${FRONTEND_URL//\"/}
-                # Prepare directories
-                sudo rm -rf /var/www/*
-                sudo mkdir -p /var/www/backend /var/www/frontend
-                # Unzip artifacts
-                sudo unzip -o /tmp/backend.zip -d /var/www/backend
-                sudo unzip -o /tmp/frontend.zip -d /var/www/frontend
-                
-                # --- FIX #1: Removed the dynamic DLL finder ---
-                
-                # Create backend service file
-                echo \"[Unit]
-                Description=Service Bus API Backend
-                [Service]
-                WorkingDirectory=/var/www/backend
-                
-                # --- FIX #1: Hardcoded the correct DLL name ---
-                ExecStart=/usr/bin/dotnet /var/www/backend/servicebusapi2.dll
-                
-                Restart=always
-                User=www-data
-                Environment=ASPNETCORE_ENVIRONMENT=Production
-                Environment=ASPNETCORE_URLS=http://localhost:5000
-                Environment=\\\"SERVICEBUS_CONNECTION=$1\\\"
-                Environment=\\\"PUBLISH_TOPIC=$2\\\"
-                Environment=\\\"SCHEDULE_TOPIC=$3\\\"
-                Environment=\\\"AngularAppUrl=http://\$(curl -s ifconfig.me)\\\"
-                [Install]
-                WantedBy=multi-user.target\" | sudo tee /etc/systemd/system/servicebusapi.service
-                # Create nginx config file
-                echo 'server {
-                      listen 80;
-                      server_name _;
-                      
-                      # --- FIX #2: Changed root path back to /var/www/frontend ---
-                      root /var/www/frontend;
-                      
-                      index index.html;
-                      location / {
-                          try_files \\\$uri \\\$uri/ /index.html;
-                      }
-                      location /api {
-                          proxy_pass http://localhost:5000;
-                          proxy_http_version 1.1;
-                          proxy_set_header Upgrade \\\$http_upgrade;
-                          proxy_set_header Connection keep-alive;
-                          proxy_set_header Host \\\$host;
-                          proxy_cache_bypass \\\$http_upgrade;
-                          proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-                          proxy_set_header X-Forwarded-Proto \\\$scheme;
-                      }
-                }' | sudo tee /etc/nginx/sites-available/default
-                # Set permissions and restart services
-                sudo chown -R www-data:www-data /var/www
-                sudo systemctl daemon-reload
-                sudo systemctl enable servicebusapi.service
-                sudo systemctl restart servicebusapi.service
-                sudo systemctl restart nginx
-              "
+          name: backend
+          path: artifacts/backend
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend
+          path: artifacts/frontend
+
+      - name: Prepare artifact zips (ensure single zip files exist)
+        run: |
+          # Find the zip files produced by your build job. Adjust if your artifacts are not zip files.
+          set -euo pipefail
+          mkdir -p packaged
+          # If the artifact uploaded already has a single zip, pick it; otherwise create zips.
+          BACKEND_ZIP=$(ls artifacts/backend/*.zip 2>/dev/null | head -n1 || true)
+          if [ -z "$BACKEND_ZIP" ]; then
+            # package directory contents as zip
+            (cd artifacts/backend && zip -r ../packaged/backend.zip .)
+            BACKEND_ZIP=artifacts/packaged/backend.zip
+          fi
+          FRONTEND_ZIP=$(ls artifacts/frontend/*.zip 2>/dev/null | head -n1 || true)
+          if [ -z "$FRONTEND_ZIP" ]; then
+            (cd artifacts/frontend && zip -r ../packaged/frontend.zip .)
+            FRONTEND_ZIP=artifacts/packaged/frontend.zip
+          fi
+          echo "backend_zip=$BACKEND_ZIP" >> $GITHUB_OUTPUT
+          echo "frontend_zip=$FRONTEND_ZIP" >> $GITHUB_OUTPUT
+
+      - name: Copy artifacts to VM (SCP)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          port: 22
+          source: |
+            ${{ steps.prepare_artifact_zips.outputs.backend_zip }}
+            ${{ steps.prepare_artifact_zips.outputs.frontend_zip }}
+          target: /tmp/
+        id: scp
+
+      - name: Run deploy script on VM (install runtime, unzip, create service, nginx)
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            #!/bin/bash
+            set -euo pipefail
+            echo "==== Starting remote deploy ===="
+            # Paths
+            BACKEND_ZIP="/tmp/$(basename ${{ steps.prepare_artifact_zips.outputs.backend_zip }})"
+            FRONTEND_ZIP="/tmp/$(basename ${{ steps.prepare_artifact_zips.outputs.frontend_zip }})"
+            WWW_DIR="/var/www"
+            BACKEND_DIR="${WWW_DIR}/backend"
+            FRONTEND_DIR="${WWW_DIR}/frontend"
+
+            # Update + essential tools
+            sudo apt-get update -y
+            sudo apt-get install -y unzip jq curl ca-certificates gnupg lsb-release apt-transport-https nginx
+
+            # Install dotnet runtime (idempotent) using Microsoft install script (works across distros)
+            if ! command -v dotnet > /dev/null 2>&1; then
+              echo "Installing dotnet runtime (using dotnet-install script)..."
+              wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+              chmod +x /tmp/dotnet-install.sh
+              # Install the dotnet runtime (8.0) to /opt/dotnet
+              sudo /tmp/dotnet-install.sh --runtime dotnet --channel 8.0 --install-dir /opt/dotnet
+              sudo ln -sf /opt/dotnet/dotnet /usr/bin/dotnet
+            else
+              echo "dotnet already installed at $(which dotnet)"
+            fi
+
+            # Prepare directories
+            sudo mkdir -p "${BACKEND_DIR}" "${FRONTEND_DIR}"
+            # Be careful: do not wipe other apps in /var/www unintentionally
+            sudo rm -rf "${BACKEND_DIR:?}/"* "${FRONTEND_DIR:?}/"*
+
+            # Copy/unzip artifacts (the files were scp'd to /tmp)
+            if [ -f "${BACKEND_ZIP}" ]; then
+              sudo unzip -o "${BACKEND_ZIP}" -d "${BACKEND_DIR}"
+            else
+              echo "Backend zip ${BACKEND_ZIP} not found" >&2
+              exit 1
+            fi
+
+            if [ -f "${FRONTEND_ZIP}" ]; then
+              sudo unzip -o "${FRONTEND_ZIP}" -d "${FRONTEND_DIR}"
+            else
+              echo "Frontend zip ${FRONTEND_ZIP} not found" >&2
+              exit 1
+            fi
+
+            # --- Create service env file (restricted permissions) ---
+            sudo mkdir -p /etc/servicebus
+            sudo chmod 750 /etc/servicebus
+            sudo tee /etc/servicebus/service.env > /dev/null <<'ENV'
+SERVICEBUS_CONNECTION='${{ secrets.SERVICEBUS_CONNECTION }}'
+PUBLISH_TOPIC='${{ secrets.PUBLISH_TOPIC }}'
+SCHEDULE_TOPIC='${{ secrets.SCHEDULE_TOPIC }}'
+ENV
+            sudo chmod 600 /etc/servicebus/service.env
+            sudo chown root:root /etc/servicebus/service.env
+
+            # Append AngularAppUrl computed on the VM (prefer Azure IMDS, fallback to ifconfig.me)
+            # Use Azure Instance Metadata Service (non-proxied)
+            PUBLIC_IP=""
+            if command -v curl >/dev/null 2>&1; then
+              PUBLIC_IP=$(curl -s -H Metadata:true "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01" || true)
+              if [ -z "$PUBLIC_IP" ]; then
+                PUBLIC_IP=$(curl -s ifconfig.me || true)
+              fi
+            fi
+            if [ -z "$PUBLIC_IP" ]; then
+              PUBLIC_IP="localhost"
+            fi
+            echo "AngularAppUrl=http://${PUBLIC_IP}" | sudo tee -a /etc/servicebus/service.env > /dev/null
+            sudo chmod 600 /etc/servicebus/service.env
+
+            # --- Create startup wrapper that finds the DLL dynamically ---
+            sudo tee /usr/local/bin/start-servicebus.sh > /dev/null <<'BASH'
+#!/bin/bash
+set -euo pipefail
+cd /var/www/backend
+# find the main DLL (take the first .dll file found)
+DLL=$(ls *.dll 2>/dev/null | head -n1 || true)
+if [ -z "$DLL" ]; then
+  echo "ERROR: No .dll found in /var/www/backend" >&2
+  exit 1
+fi
+# Run dotnet with the found DLL
+exec /usr/bin/dotnet "/var/www/backend/$DLL"
+BASH
+            sudo chmod +x /usr/local/bin/start-servicebus.sh
+            sudo chown root:root /usr/local/bin/start-servicebus.sh
+
+            # --- Create systemd unit that uses EnvironmentFile (so secrets are not world-readable) ---
+            sudo tee /etc/systemd/system/servicebusapi.service > /dev/null <<'UNIT'
+[Unit]
+Description=Service Bus API Backend
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/backend
+ExecStart=/usr/local/bin/start-servicebus.sh
+Restart=always
+User=www-data
+EnvironmentFile=/etc/servicebus/service.env
+# Optional: set a sensible limit and restart behavior
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+            # --- Create nginx config (serve frontend, proxy API) ---
+            sudo tee /etc/nginx/sites-available/default > /dev/null <<'NGINX'
+server {
+    listen 80;
+    server_name _;
+
+    root /var/www/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "keep-alive";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+NGINX
+
+            # Permissions and reload services
+            sudo chown -R www-data:www-data /var/www || true
+            sudo systemctl daemon-reload
+            sudo systemctl enable servicebusapi.service
+            sudo systemctl restart servicebusapi.service || true
+            sudo systemctl restart nginx || true
+
+            echo "---- Service status ----"
+            sudo systemctl status servicebusapi --no-pager || true
+            echo "---- Recent journal ----"
+            sudo journalctl -u servicebusapi --since "5 minutes ago" --no-pager || true
+            echo "==== Remote deploy finished ===="
+
+      - name: Show final service status (helpful for debugging)
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -euo pipefail
+            echo "service unit:"
+            sudo systemctl status servicebusapi --no-pager || true
+            echo
+            echo "journal (last 200 lines):"
+            sudo journalctl -u servicebusapi --no-pager -n 200 || true
