@@ -7,7 +7,7 @@ on:
 
 env:
   AZURE_VM_NAME: 'servicebustry'
-  AZURE_RESOURCE_GROUP: 'tries'
+  AZURE_RESOURCE_GROUP: 'TRIES'
   BACKEND_PATH: 'backend'
   FRONTEND_PATH: 'frontend'
   BACKEND_ARTIFACT_NAME: 'backend-app'
@@ -109,6 +109,7 @@ jobs:
               Restart=always
               User=www-data
               Environment=ASPNETCORE_ENVIRONMENT=Production
+              Environment=ASPNETCORE_URLS=http://localhost:5000
               Environment=\\\"SERVICEBUS_CONNECTION=$1\\\"
               Environment=\\\"PUBLISH_TOPIC=$2\\\"
               Environment=\\\"SCHEDULE_TOPIC=$3\\\"
@@ -119,7 +120,7 @@ jobs:
               echo 'server {
                   listen 80;
                   server_name _;
-                  root /var/www/frontend;
+                  root /var/www/frontend/dist;
                   index index.html;
                   location / {
                       try_files \\\$uri \\\$uri/ /index.html;
