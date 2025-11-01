@@ -149,4 +149,76 @@ ENV
             echo "AngularAppUrl=http://${PUBLIC_IP}" | sudo tee -a /etc/servicebus/service.env > /dev/null
             sudo chmod 600 /etc/servicebus/service.env
 
-            # ---
+            # --- Create startup wrapper that finds the DLL dynamically ---
+            sudo tee /usr/local/bin/start-servicebus.sh > /dev/null <<'BASH'
+#!/bin/bash
+set -euo pipefail
+cd /var/www/backend
+# find the main DLL (e.g., servicebusapi2.dll)
+DLL=$(find . -maxdepth 1 -name '*.dll' -exec basename {} \; | head -n 1)
+if [ -z "$DLL" ]; then
+  echo "ERROR: No .dll found in /var/www/backend" >&2
+  exit 1
+fi
+echo "--- Starting service with $DLL ---"
+exec /usr/bin/dotnet "/var/www/backend/$DLL"
+BASH
+            sudo chmod +x /usr/local/bin/start-servicebus.sh
+
+            # --- Create systemd unit ---
+            sudo tee /etc/systemd/system/servicebusapi.service > /dev/null <<'UNIT'
+[Unit]
+Description=Service Bus API Backend
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/backend
+ExecStart=/usr/local/bin/start-servicebus.sh
+Restart=always
+User=www-data
+EnvironmentFile=/etc/servicebus/service.env
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+            # --- Create nginx config ---
+            sudo tee /etc/nginx/sites-available/default > /dev/null <<'NGINX'
+server {
+    listen 80;
+    server_name _;
+
+    # --- Correct path for your frontend files ---
+    root /var/www/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:5000; # Matches ASPNETCORE_URLS
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "keep-alive";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+NGINX
+
+            # Permissions and reload services
+            sudo chown -R www-data:www-data /var/www
+            sudo systemctl daemon-reload
+            sudo systemctl enable servicebusapi.service
+            sudo systemctl restart servicebusapi.service
+            sudo systemctl restart nginx
+
+            echo "==== Remote deploy finished ===="
+            echo "Waiting 5s for service to start..."
+            sleep 5
+            sudo systemctl status servicebusapi.service --no-pager
+            sudo journalctl -u servicebusapi.service --since "1 minute ago" --no-pager
