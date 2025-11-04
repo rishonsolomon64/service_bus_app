@@ -1,0 +1,45 @@
+name: Publish and Deploy to VM
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish app
+        run: dotnet publish ./backend/servicebusapi2.csproj -c Release -o ./publish
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Copy publish to VM
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./publish/* ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/publish/
+
+      - name: Deploy on VM (create env file, install release, restart service)
+        run: |
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "\
+            echo 'ConnectionStrings__ServiceBus=\"${{ secrets.SERVICEBUS_CONNECTION }}\"' | sudo tee /etc/myapp.env > /dev/null && \
+            sudo chown root:root /etc/myapp.env && sudo chmod 600 /etc/myapp.env && \
+            sudo mkdir -p /opt/myapp/releases/${TIMESTAMP} && \
+            sudo mv /tmp/publish/* /opt/myapp/releases/${TIMESTAMP}/ && \
+            sudo ln -sfn /opt/myapp/releases/${TIMESTAMP} /opt/myapp/current && \
+            sudo chown -R myapp:myapp /opt/myapp/releases/${TIMESTAMP} /opt/myapp/current && \
+            sudo systemctl daemon-reload && sudo systemctl restart myapp.service || sudo systemctl enable --now myapp.service \
+          "

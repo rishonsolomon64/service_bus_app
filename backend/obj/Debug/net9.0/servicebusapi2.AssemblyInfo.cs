@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("servicebusapi2")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f10ced6c17b7b995b8885c867d721e0ae3233001")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6750247f940a9de3838bf4478164839aa10b7357")]
 [assembly: System.Reflection.AssemblyProductAttribute("servicebusapi2")]
 [assembly: System.Reflection.AssemblyTitleAttribute("servicebusapi2")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

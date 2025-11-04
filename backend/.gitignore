@@ -1,0 +1,26 @@
+﻿# Visual Studio / .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.rsuser
+
+# dotnet publish output
+Publish/
+publish/
+
+# Rider / IDE
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Azure / secrets (avoid committing)
+*.env
+secrets.*

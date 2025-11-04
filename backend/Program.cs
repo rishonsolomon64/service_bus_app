@@ -95,21 +95,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Exception handling middleware to log errors
-app.Use(async (context, next) =>
-{
-    try
-    {
-        await next();
-    }
-    catch (Exception ex)
-    {
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An unhandled exception has occurred.");
-        throw; // Re-throw the exception
-    }
-});
-
 // app.UseHttpsRedirection(); // Commented out for now to simplify proxy configuration
 app.UseCors("AllowAngularApp");
 app.UseAuthorization();
