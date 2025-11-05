@@ -27,32 +27,25 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Copy publish to VM
-        run: |
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./publish/* ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/publish/
-
       - name: Deploy on VM (write env, install release, restart)
         env:
           SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
         run: |
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "\
-            set -e; \
-            sudo mkdir -p /opt/myapp/releases/${TIMESTAMP}; \
-            sudo mv /tmp/publish/* /opt/myapp/releases/${TIMESTAMP}/; \
-            sudo chown -R myapp:myapp /opt/myapp/releases/${TIMESTAMP}; \
-            sudo ln -sfn /opt/myapp/releases/${TIMESTAMP} /opt/myapp/current; \
-            sudo chown -h myapp:myapp /opt/myapp/current; \
-            printf '%s\n' 'ASPNETCORE_ENVIRONMENT=Production' \
-              SERVICEBUS_CONNECTION=\"${SERVICEBUS_CONNECTION}\" \
-              ConnectionStrings__ServiceBus=\"${SERVICEBUS_CONNECTION}\" \
-            | sudo tee /etc/myapp.env > /dev/null; \
-            sudo chmod 600 /etc/myapp.env; sudo chown root:root /etc/myapp.env; \
-            echo 'FILE_SHA256='$(sudo sha256sum /etc/myapp.env | cut -d' ' -f1); \
-            sudo systemctl daemon-reload; sudo systemctl enable --now myapp.service; \
-          "
-
-            | sudo tee /etc/myapp.env > /dev/null && \
-            sudo chmod 600 /etc/myapp.env && sudo chown root:root /etc/myapp.env && \
-            sudo systemctl daemon-reload && sudo systemctl enable --now myapp.service \
-          "
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s <<EOF
+          set -e
+          sudo mkdir -p /opt/myapp/releases/$TIMESTAMP
+          sudo mv /tmp/publish/* /opt/myapp/releases/$TIMESTAMP/
+          sudo chown -R myapp:myapp /opt/myapp/releases/$TIMESTAMP
+          sudo ln -sfn /opt/myapp/releases/$TIMESTAMP /opt/myapp/current
+          sudo chown -h myapp:myapp /opt/myapp/current
+          printf '%s\n' 'ASPNETCORE_ENVIRONMENT=Production' \
+            "SERVICEBUS_CONNECTION=$SERVICEBUS_CONNECTION" \
+            "ConnectionStrings__ServiceBus=$SERVICEBUS_CONNECTION" \
+          | sudo tee /etc/myapp.env > /dev/null
+          sudo chmod 600 /etc/myapp.env
+          sudo chown root:root /etc/myapp.env
+          echo "FILE_SHA256=$(sudo sha256sum /etc/myapp.env | cut -d' ' -f1)"
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now myapp.service
+          EOF
