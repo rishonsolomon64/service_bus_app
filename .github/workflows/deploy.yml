@@ -27,6 +27,15 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+      - name: Prepare remote publish folder
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "sudo mkdir -p /tmp/publish && sudo chown ${{ secrets.VM_USER }}:${{ secrets.VM_USER }} /tmp/publish || true"
+
+      - name: Copy publish to VM
+        run: |
+          # copy the whole publish directory (not a wildcard) to the remote /tmp/publish
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./publish ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/publish
+
       - name: Deploy on VM (write env, install release, restart)
         env:
           SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
@@ -34,8 +43,19 @@ jobs:
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s <<EOF
           set -e
+          # fail early if publish directory is missing or empty
+          if [ ! -d /tmp/publish/publish ] && [ -z "$(ls -A /tmp/publish 2>/dev/null)" ]; then
+            echo "ERROR: /tmp/publish is missing or empty" >&2
+            exit 2
+          fi
+          # if scp copied ./publish as a directory, move its contents; otherwise move files
+          if [ -d /tmp/publish/publish ]; then
+            SRC=/tmp/publish/publish
+          else
+            SRC=/tmp/publish
+          fi
           sudo mkdir -p /opt/myapp/releases/$TIMESTAMP
-          sudo mv /tmp/publish/* /opt/myapp/releases/$TIMESTAMP/
+          sudo mv $SRC/* /opt/myapp/releases/$TIMESTAMP/
           sudo chown -R myapp:myapp /opt/myapp/releases/$TIMESTAMP
           sudo ln -sfn /opt/myapp/releases/$TIMESTAMP /opt/myapp/current
           sudo chown -h myapp:myapp /opt/myapp/current
@@ -49,3 +69,4 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl enable --now myapp.service
           EOF
+
