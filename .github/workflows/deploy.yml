@@ -32,14 +32,20 @@ jobs:
           scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./publish/* ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/publish/
 
       - name: Deploy on VM (create env file, install release, restart service)
+        env:
+          SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
         run: |
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "\
-            echo 'ConnectionStrings__ServiceBus=\"${{ secrets.SERVICEBUS_CONNECTION }}\"' | sudo tee /etc/myapp.env > /dev/null && \
-            sudo chown root:root /etc/myapp.env && sudo chmod 600 /etc/myapp.env && \
             sudo mkdir -p /opt/myapp/releases/${TIMESTAMP} && \
             sudo mv /tmp/publish/* /opt/myapp/releases/${TIMESTAMP}/ && \
+            sudo chown -R myapp:myapp /opt/myapp/releases/${TIMESTAMP} && \
             sudo ln -sfn /opt/myapp/releases/${TIMESTAMP} /opt/myapp/current && \
-            sudo chown -R myapp:myapp /opt/myapp/releases/${TIMESTAMP} /opt/myapp/current && \
-            sudo systemctl daemon-reload && sudo systemctl restart myapp.service || sudo systemctl enable --now myapp.service \
+            sudo chown -h myapp:myapp /opt/myapp/current && \
+            printf '%s\n' 'ASPNETCORE_ENVIRONMENT=Production' \
+              \"SERVICEBUS_CONNECTION=\\\"${SERVICEBUS_CONNECTION}\\\"\" \
+              \"ConnectionStrings__ServiceBus=\\\"${SERVICEBUS_CONNECTION}\\\"\" \
+            | sudo tee /etc/myapp.env > /dev/null && \
+            sudo chmod 600 /etc/myapp.env && sudo chown root:root /etc/myapp.env && \
+            sudo systemctl daemon-reload && sudo systemctl enable --now myapp.service \
           "
