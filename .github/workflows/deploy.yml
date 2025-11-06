@@ -41,32 +41,55 @@ jobs:
           SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
         run: |
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s <<EOF
-          set -e
-          # fail early if publish directory is missing or empty
-          if [ ! -d /tmp/publish/publish ] && [ -z "$(ls -A /tmp/publish 2>/dev/null)" ]; then
-            echo "ERROR: /tmp/publish is missing or empty" >&2
-            exit 2
-          fi
-          # if scp copied ./publish as a directory, move its contents; otherwise move files
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s <<'EOF'
+          set -euo pipefail
+
+          # determine source folder that must be inside /tmp/publish
           if [ -d /tmp/publish/publish ]; then
             SRC=/tmp/publish/publish
-          else
+          elif [ -d /tmp/publish ]; then
             SRC=/tmp/publish
+          else
+            echo "ERROR: /tmp/publish or /tmp/publish/publish not found" >&2
+            exit 2
           fi
-          sudo mkdir -p /opt/myapp/releases/$TIMESTAMP
-          sudo mv $SRC/* /opt/myapp/releases/$TIMESTAMP/
-          sudo chown -R myapp:myapp /opt/myapp/releases/$TIMESTAMP
-          sudo ln -sfn /opt/myapp/releases/$TIMESTAMP /opt/myapp/current
+
+          # safety guard: ensure SRC is under /tmp/publish
+          case "$SRC" in
+            /tmp/publish* ) ;;
+            * )
+              echo "ERROR: source directory ($SRC) not under /tmp/publish. Aborting." >&2
+              exit 3
+              ;;
+          esac
+
+          # ensure the source is not empty
+          if [ -z "$(ls -A "$SRC" 2>/dev/null)" ]; then
+            echo "ERROR: source directory $SRC is empty" >&2
+            exit 4
+          fi
+
+          # create release dir and copy (use rsync to avoid accidental moves)
+          RELEASE_DIR=/opt/myapp/releases/$TIMESTAMP
+          sudo mkdir -p "$RELEASE_DIR"
+          sudo chown $USER:$USER "$RELEASE_DIR" || true
+          sudo rsync -a --remove-source-files "$SRC"/ "$RELEASE_DIR"/
+          sudo find "$SRC" -type d -empty -delete || true
+
+          sudo chown -R myapp:myapp "$RELEASE_DIR"
+          sudo ln -sfn "$RELEASE_DIR" /opt/myapp/current
           sudo chown -h myapp:myapp /opt/myapp/current
+
+          # write env (expanded from runner) and secure it
           printf '%s\n' 'ASPNETCORE_ENVIRONMENT=Production' \
             "SERVICEBUS_CONNECTION=$SERVICEBUS_CONNECTION" \
             "ConnectionStrings__ServiceBus=$SERVICEBUS_CONNECTION" \
           | sudo tee /etc/myapp.env > /dev/null
           sudo chmod 600 /etc/myapp.env
           sudo chown root:root /etc/myapp.env
+
           echo "FILE_SHA256=$(sudo sha256sum /etc/myapp.env | cut -d' ' -f1)"
+
           sudo systemctl daemon-reload
           sudo systemctl enable --now myapp.service
           EOF
-
