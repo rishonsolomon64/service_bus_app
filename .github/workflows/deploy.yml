@@ -31,14 +31,30 @@ jobs:
         - name: Publish
           run: dotnet publish backend/servicebusapi2.csproj --configuration Release --output ./publish --no-build
 
-        - name: Upload app to VM
+        - name: Azure Login
+          uses: azure/login@v1
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+        - name: Compress and encode app
           run: |
-            az login --identity || echo "Assuming already logged in"
-            az vm run-command copy \
+            zip -r publish.zip ./publish
+            base64 publish.zip > publish.b64
+
+        - name: Transfer and extract app on VM
+          run: |
+            B64_CONTENT=$(cat publish.b64)
+            az vm run-command invoke \
               --resource-group tries \
               --name servicebustry2 \
-              --source ./publish \
-              --destination /tmp/publish
+              --command-id RunShellScript \
+              --parameters "b64=$B64_CONTENT" \
+              --scripts 'set -e
+                echo "$b64" > /tmp/publish.b64
+                base64 -d /tmp/publish.b64 > /tmp/publish.zip
+                unzip -o /tmp/publish.zip -d /tmp/publish
+                rm /tmp/publish.zip /tmp/publish.b64'
+                
         - name: Organize release on VM
           run: |
             TIMESTAMP=$(date +%Y%m%d%H%M%S)
@@ -46,13 +62,14 @@ jobs:
               --resource-group tries \
               --name servicebustry2 \
               --command-id RunShellScript \
-              --scripts |
+              --scripts '
                 set -e
                 RELEASE_DIR=/opt/myapp/releases/$TIMESTAMP
                 sudo mkdir -p \$RELEASE_DIR
                 sudo mv /tmp/publish/* \$RELEASE_DIR/
                 sudo chown -R myapp:myapp \$RELEASE_DIR
                 sudo ln -sfn \$RELEASE_DIR /opt/myapp/current
+              '
                
         - name: Inject secrets into /etc/myapp.env
           run: |
@@ -60,13 +77,14 @@ jobs:
               --resource-group tries \
               --name servicebustry2 \
               --command-id RunShellScript \
-              --scripts |
+              --scripts '
                 set -e
                 printf "SERVICEBUS_CONNECTION=%s\n" "${SERVICEBUS_CONNECTION}" | sudo tee /etc/myapp.env > /dev/null
                 printf "PUBLISH_TOPIC=%s\n" "${PUBLISH_TOPIC}" | sudo tee -a /etc/myapp.env > /dev/null
                 printf "SCHEDULE_TOPIC=%s\n" "${SCHEDULE_TOPIC}" | sudo tee -a /etc/myapp.env > /dev/null
                 sudo chmod 600 /etc/myapp.env
                 sudo chown root:root /etc/myapp.env
+              '
 
         - name: Create and start systemd service
           run: |
@@ -74,7 +92,7 @@ jobs:
             --resource-group tries \
             --name servicebustry2 \
             --command-id RunShellScript \
-            --scripts |
+            --scripts '
               set -e
               sudo tee /etc/systemd/system/myapp.service > /dev/null <<EOF
               [Unit]
@@ -97,6 +115,7 @@ jobs:
               sudo systemctl daemon-reload
               sudo systemctl enable myapp.service
               sudo systemctl restart myapp.service
+            '
                 
             
 
