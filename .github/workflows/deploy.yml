@@ -1,109 +1,103 @@
-name: Build and Deploy .NET App to Azure VM
+name: Deploy .NET App to Azure VM
 
 on:
   push:
-    branches: [ main ]  # Adjust if using a different branch
-  workflow_dispatch:    # Allows manual trigger
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-
-    env:
-      RESOURCE_GROUP: tries
-      VM_NAME: servicebustry2
-
-    steps:
-    - name: 🧾 Checkout code
-      uses: actions/checkout@v3
-
-    - name: 🛠️ Setup .NET SDK
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '8.0.x'
-
-    - name: 📦 Restore dependencies
-      run: dotnet restore
-
-    - name: 🏗️ Build app
-      run: dotnet build --configuration Release --no-restore
-
-    - name: 🚀 Publish app
-      run: dotnet publish --configuration Release --output ./publish
-
-    - name: 📤 Create publish directory on VM
-      run: |
-        az vm run-command invoke \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.VM_NAME }} \
-          --command-id RunShellScript \
-          --scripts "sudo mkdir -p /tmp/publish"
-
-    - name: 📁 Copy publish folder to VM
-      run: |
-        az vm run-command copy \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.VM_NAME }} \
-          --source ./publish \
-          --destination /tmp/publish
-
-    - name: 🧩 Deploy app on VM
-      run: |
-        az vm run-command invoke \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.VM_NAME }} \
-          --command-id RunShellScript \
-          --scripts "set -euo pipefail
-        TIMESTAMP=\$(date +%Y%m%d%H%M%S)
-        RELEASE_DIR=/opt/myapp/releases/\$TIMESTAMP
-        sudo mkdir -p \$RELEASE_DIR
-        sudo rsync -a /tmp/publish/ \$RELEASE_DIR/
-        sudo chown -R myapp:myapp \$RELEASE_DIR
-        sudo ln -sfn \$RELEASE_DIR /opt/myapp/current
-        sudo chown -h myapp:myapp /opt/myapp/current"
-
-    - name: 🔐 Inject secrets into VM
+    deploy:
+      runs-on: ubuntu-latest
       env:
         SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
         PUBLISH_TOPIC: ${{ secrets.PUBLISH_TOPIC }}
         SCHEDULE_TOPIC: ${{ secrets.SCHEDULE_TOPIC }}
-      run: |
-        az vm run-command invoke \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.VM_NAME }} \
-          --command-id RunShellScript \
-          --scripts "sudo bash -c 'cat > /etc/myapp.env <<EOF
-ASPNETCORE_ENVIRONMENT=Production
-SERVICEBUS_CONNECTION=${SERVICEBUS_CONNECTION}
-PUBLISH_TOPIC=${PUBLISH_TOPIC}
-SCHEDULE_TOPIC=${SCHEDULE_TOPIC}
-EOF
-chmod 600 /etc/myapp.env
-chown root:root /etc/myapp.env'"
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
 
-    - name: ⚙️ Create and start systemd service
-      run: |
-        az vm run-command invoke \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.VM_NAME }} \
-          --command-id RunShellScript \
-          --scripts "sudo tee /etc/systemd/system/myapp.service > /dev/null <<'UNIT'
-[Unit]
-Description=MyApp service
-After=network.target
+        - name: Set up .NET 8.0
+          uses: actions/setup-dotnet@v4
+          with:
+            dotnet-version: '8.0.x'
 
-[Service]
-User=myapp
-WorkingDirectory=/opt/myapp/current
-ExecStart=/usr/bin/dotnet /opt/myapp/current/servicebusapi2.dll
-Restart=always
-RestartSec=5
-EnvironmentFile=/etc/myapp.env
+        - name: Restore dependencies
+          run: dotnet restore
 
-[Install]
-WantedBy=multi-user.target
-UNIT
+        - name: Build
+          run: dotnet build --configuration Release --no-restore
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now myapp.service
-sudo systemctl status myapp.service --no-pager -l"
+        - name: Publish
+          run: dotnet publish --configuration Release --output ./publish --no-build
+
+        - name: Upload app to VM
+          run: |
+            az login --identity || echo "Assuming already logged in"
+            az vm run-command copy \
+              --resource-group tries \
+              --name servicebustry2 \
+              --source ./publish \
+              --destination /tmp/publish
+        - name: Organize release on VM
+          run: |
+            TIMESTAMP=$(date +%Y%m%d%H%M%S)
+            az vm run-command invoke \
+              --resource-group tries \
+              --name servicebustry2 \
+              --command-id RunShellScript \
+              --scripts |
+                set -e
+                RELEASE_DIR=/opt/myapp/releases/$TIMESTAMP
+                sudo mkdir -p \$RELEASE_DIR
+                sudo mv /tmp/publish/* \$RELEASE_DIR/
+                sudo chown -R myapp:myapp \$RELEASE_DIR
+                sudo ln -sfn \$RELEASE_DIR /opt/myapp/current
+               
+        - name: Inject secrets into /etc/myapp.env
+          run: |
+            az vm run-command invoke \
+              --resource-group tries \
+              --name servicebustry2 \
+              --command-id RunShellScript \
+              --scripts |
+                set -e
+                printf "SERVICEBUS_CONNECTION=%s\n" "${SERVICEBUS_CONNECTION}" | sudo tee /etc/myapp.env > /dev/null
+                printf "PUBLISH_TOPIC=%s\n" "${PUBLISH_TOPIC}" | sudo tee -a /etc/myapp.env > /dev/null
+                printf "SCHEDULE_TOPIC=%s\n" "${SCHEDULE_TOPIC}" | sudo tee -a /etc/myapp.env > /dev/null
+                sudo chmod 600 /etc/myapp.env
+                sudo chown root:root /etc/myapp.env
+
+        - name: Create and start systemd service
+          run: |
+            az vm run-command invoke \
+            --resource-group tries \
+            --name servicebustry2 \
+            --command-id RunShellScript \
+            --scripts |
+              set -e
+              sudo tee /etc/systemd/system/myapp.service > /dev/null <<EOF
+              [Unit]
+              Description=MyApp Service
+              After=network.target
+
+              [Service]
+              EnvironmentFile=/etc/myapp.env
+              ExecStart=/usr/bin/dotnet /opt/myapp/current/servicebusapi2.dll
+              WorkingDirectory=/opt/myapp/current
+              User=myapp
+              Restart=always
+              RestartSec=10
+
+              [Install]
+              WantedBy=multi-user.target
+              EOF
+
+              sudo systemctl daemon-reexec
+              sudo systemctl daemon-reload
+              sudo systemctl enable myapp.service
+              sudo systemctl restart myapp.service
+                
+            
+
+              
