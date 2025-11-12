@@ -1,95 +1,109 @@
-name: Publish and Deploy to VM
+name: Build and Deploy .NET App to Azure VM
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]  # Adjust if using a different branch
+  workflow_dispatch:    # Allows manual trigger
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
+    env:
+      RESOURCE_GROUP: tries
+      VM_NAME: servicebustry2
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: 🧾 Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+    - name: 🛠️ Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
 
-      - name: Publish app
-        run: dotnet publish ./backend/servicebusapi2.csproj -c Release -o ./publish
+    - name: 📦 Restore dependencies
+      run: dotnet restore
 
-      - name: Prepare SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+    - name: 🏗️ Build app
+      run: dotnet build --configuration Release --no-restore
 
-      - name: Prepare remote publish folder
-        run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "sudo mkdir -p /tmp/publish && sudo chown ${{ secrets.VM_USER }}:${{ secrets.VM_USER }} /tmp/publish || true"
+    - name: 🚀 Publish app
+      run: dotnet publish --configuration Release --output ./publish
 
-      - name: Copy publish to VM
-        run: |
-          # copy the whole publish directory (not a wildcard) to the remote /tmp/publish
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./publish ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/publish
+    - name: 📤 Create publish directory on VM
+      run: |
+        az vm run-command invoke \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.VM_NAME }} \
+          --command-id RunShellScript \
+          --scripts "sudo mkdir -p /tmp/publish"
 
-      - name: Deploy on VM (write env, install release, restart)
-        env:
-          SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
-        run: |
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash -s <<'EOF'
-          set -euo pipefail
+    - name: 📁 Copy publish folder to VM
+      run: |
+        az vm run-command copy \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.VM_NAME }} \
+          --source ./publish \
+          --destination /tmp/publish
 
-          # determine source folder that must be inside /tmp/publish
-          if [ -d /tmp/publish/publish ]; then
-            SRC=/tmp/publish/publish
-          elif [ -d /tmp/publish ]; then
-            SRC=/tmp/publish
-          else
-            echo "ERROR: /tmp/publish or /tmp/publish/publish not found" >&2
-            exit 2
-          fi
+    - name: 🧩 Deploy app on VM
+      run: |
+        az vm run-command invoke \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.VM_NAME }} \
+          --command-id RunShellScript \
+          --scripts "set -euo pipefail
+        TIMESTAMP=\$(date +%Y%m%d%H%M%S)
+        RELEASE_DIR=/opt/myapp/releases/\$TIMESTAMP
+        sudo mkdir -p \$RELEASE_DIR
+        sudo rsync -a /tmp/publish/ \$RELEASE_DIR/
+        sudo chown -R myapp:myapp \$RELEASE_DIR
+        sudo ln -sfn \$RELEASE_DIR /opt/myapp/current
+        sudo chown -h myapp:myapp /opt/myapp/current"
 
-          # safety guard: ensure SRC is under /tmp/publish
-          case "$SRC" in
-            /tmp/publish* ) ;;
-            * )
-              echo "ERROR: source directory ($SRC) not under /tmp/publish. Aborting." >&2
-              exit 3
-              ;;
-          esac
+    - name: 🔐 Inject secrets into VM
+      env:
+        SERVICEBUS_CONNECTION: ${{ secrets.SERVICEBUS_CONNECTION }}
+        PUBLISH_TOPIC: ${{ secrets.PUBLISH_TOPIC }}
+        SCHEDULE_TOPIC: ${{ secrets.SCHEDULE_TOPIC }}
+      run: |
+        az vm run-command invoke \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.VM_NAME }} \
+          --command-id RunShellScript \
+          --scripts "sudo bash -c 'cat > /etc/myapp.env <<EOF
+ASPNETCORE_ENVIRONMENT=Production
+SERVICEBUS_CONNECTION=${SERVICEBUS_CONNECTION}
+PUBLISH_TOPIC=${PUBLISH_TOPIC}
+SCHEDULE_TOPIC=${SCHEDULE_TOPIC}
+EOF
+chmod 600 /etc/myapp.env
+chown root:root /etc/myapp.env'"
 
-          # ensure the source is not empty
-          if [ -z "$(ls -A "$SRC" 2>/dev/null)" ]; then
-            echo "ERROR: source directory $SRC is empty" >&2
-            exit 4
-          fi
+    - name: ⚙️ Create and start systemd service
+      run: |
+        az vm run-command invoke \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.VM_NAME }} \
+          --command-id RunShellScript \
+          --scripts "sudo tee /etc/systemd/system/myapp.service > /dev/null <<'UNIT'
+[Unit]
+Description=MyApp service
+After=network.target
 
-          # create release dir and copy (use rsync to avoid accidental moves)
-          RELEASE_DIR=/opt/myapp/releases/$TIMESTAMP
-          sudo mkdir -p "$RELEASE_DIR"
-          sudo chown $USER:$USER "$RELEASE_DIR" || true
-          sudo rsync -a --remove-source-files "$SRC"/ "$RELEASE_DIR"/
-          sudo find "$SRC" -type d -empty -delete || true
+[Service]
+User=myapp
+WorkingDirectory=/opt/myapp/current
+ExecStart=/usr/bin/dotnet /opt/myapp/current/servicebusapi2.dll
+Restart=always
+RestartSec=5
+EnvironmentFile=/etc/myapp.env
 
-          sudo chown -R myapp:myapp "$RELEASE_DIR"
-          sudo ln -sfn "$RELEASE_DIR" /opt/myapp/current
-          sudo chown -h myapp:myapp /opt/myapp/current
+[Install]
+WantedBy=multi-user.target
+UNIT
 
-          # write env (expanded from runner) and secure it
-          printf '%s\n' 'ASPNETCORE_ENVIRONMENT=Production' \
-            "SERVICEBUS_CONNECTION=$SERVICEBUS_CONNECTION" \
-            "ConnectionStrings__ServiceBus=$SERVICEBUS_CONNECTION" \
-          | sudo tee /etc/myapp.env > /dev/null
-          sudo chmod 600 /etc/myapp.env
-          sudo chown root:root /etc/myapp.env
-
-          echo "FILE_SHA256=$(sudo sha256sum /etc/myapp.env | cut -d' ' -f1)"
-
-          sudo systemctl daemon-reload
-          sudo systemctl enable --now myapp.service
-          EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now myapp.service
+sudo systemctl status myapp.service --no-pager -l"
